@@ -71,13 +71,23 @@ uv run ruff check .
 uv run pyright
 ```
 
+## Language support
+
+| Language | Resolver | Version source |
+| --- | --- | --- |
+| Python | Sphinx `objects.inv` (+ RTD/PyPI discovery) | pyproject, uv.lock, poetry.lock, requirements.txt |
+| Rust | docs.rs / doc.rust-lang.org URL scheme | Cargo.toml, Cargo.lock |
+| JS/TS | MDN Global Objects (builtins) | package.json, package-lock.json |
+
+Anything the deterministic resolvers miss falls through to the LLM classifier
+(if configured) and then a web-search backend.
+
 ## Milestones
 
-- **M1 ✅** daemon core, tree-sitter Python context, version resolver
-  (pyproject/uv.lock/requirements/poetry), `objects.inv` resolver, SQLite cache,
-  tiered retriever, CLI + HTTP daemon skeleton.
-- **M2** VS Code extension + WebSocket transport + sidebar + debounce.
-- **M3** LiteLLM IntentClassifier + web-search fallback + graceful degradation.
-- **M4** Rust (docs.rs) + JS/TS (MDN) resolvers, Cargo/npm manifests.
+- **M1 ✅** daemon core, tree-sitter Python context, version resolver,
+  `objects.inv` resolver, SQLite cache, tiered retriever, CLI + HTTP daemon.
+- **M2 ✅** VS Code extension + WebSocket transport + sidebar + debounce.
+- **M3 ✅** LiteLLM IntentClassifier + web-search fallback + graceful degradation.
+- **M4 ✅** Rust (docs.rs) + JS/TS (MDN) resolvers, Cargo/npm manifests.
 
 MIT licensed.

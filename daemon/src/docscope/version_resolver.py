@@ -14,6 +14,7 @@ file's mtime changes.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import tomllib
@@ -38,6 +39,8 @@ _IMPORT_ALIASES = {
 }
 
 _PYTHON_SOURCE_PRIORITY = ["uv.lock", "poetry.lock", "requirements.txt", "pyproject.toml"]
+_RUST_SOURCE_PRIORITY = ["Cargo.lock", "Cargo.toml"]
+_NPM_SOURCE_PRIORITY = ["package-lock.json", "package.json"]
 
 _REQ_LINE = re.compile(
     r"^\s*(?P<name>[A-Za-z0-9][A-Za-z0-9._-]*)\s*(?:\[[^\]]*\])?\s*(?P<spec>.*?)\s*(?:#.*)?$"
@@ -57,15 +60,26 @@ class VersionMap:
     def __init__(self, packages: list[PackageVersion]) -> None:
         self.packages = packages
         self._by_canonical: dict[str, PackageVersion] = {}
+        self._by_ecosystem: dict[tuple[str, str], PackageVersion] = {}
         for p in packages:
             # First writer wins if two sources disagree; callers order by
             # priority so the exact lockfile entry lands first.
             self._by_canonical.setdefault(canonical(p.package), p)
+            self._by_ecosystem.setdefault((p.ecosystem, canonical(p.package)), p)
 
-    def lookup(self, import_name: str) -> PackageVersion | None:
-        """Resolve a top-level import name to a version, applying aliases."""
+    def lookup(self, import_name: str, ecosystem: str | None = None) -> PackageVersion | None:
+        """Resolve a top-level import/crate/module name to a version.
+
+        Applies Python import aliases; when ``ecosystem`` is given, prefers a
+        match in that ecosystem before falling back to any ecosystem (crate and
+        PyPI names occasionally collide)."""
         dist = _IMPORT_ALIASES.get(import_name, import_name)
-        return self._by_canonical.get(canonical(dist))
+        key = canonical(dist)
+        if ecosystem is not None:
+            scoped = self._by_ecosystem.get((ecosystem, key))
+            if scoped is not None:
+                return scoped
+        return self._by_canonical.get(key)
 
     def __len__(self) -> int:
         return len(self.packages)
@@ -115,43 +129,42 @@ class VersionResolver:
 
     def _discover_sources(self, root: Path) -> list[Path]:
         names = [
-            "uv.lock",
-            "poetry.lock",
-            "requirements.txt",
-            "pyproject.toml",
-            "Cargo.lock",
-            "Cargo.toml",
-            "package.json",
+            *_PYTHON_SOURCE_PRIORITY,
+            *_RUST_SOURCE_PRIORITY,
+            *_NPM_SOURCE_PRIORITY,
         ]
         return [root / n for n in names if (root / n).is_file()]
 
     def _parse_all(self, root: Path, sources: list[Path]) -> list[PackageVersion]:
         present = {p.name for p in sources}
         packages: list[PackageVersion] = []
-        seen: set[str] = set()
+        seen: set[tuple[str, str]] = set()
 
         def add_from(pvs: list[PackageVersion]) -> None:
             for pv in pvs:
-                key = canonical(pv.package)
+                key = (pv.ecosystem, canonical(pv.package))
                 if key in seen:
                     continue
                 seen.add(key)
                 packages.append(pv)
 
-        # Python: exact lockfiles first so their entries win.
-        for name in _PYTHON_SOURCE_PRIORITY:
+        parsers = {
+            "uv.lock": _parse_uv_lock,
+            "poetry.lock": _parse_poetry_lock,
+            "requirements.txt": _parse_requirements,
+            "pyproject.toml": _parse_pyproject,
+            "Cargo.lock": _parse_cargo_lock,
+            "Cargo.toml": _parse_cargo_toml,
+            "package-lock.json": _parse_package_lock,
+            "package.json": _parse_package_json,
+        }
+        # Within each ecosystem, exact lockfiles are parsed first so they win.
+        for name in [*_PYTHON_SOURCE_PRIORITY, *_RUST_SOURCE_PRIORITY, *_NPM_SOURCE_PRIORITY]:
             if name not in present:
                 continue
             path = root / name
             try:
-                if name == "uv.lock":
-                    add_from(_parse_uv_lock(path))
-                elif name == "poetry.lock":
-                    add_from(_parse_poetry_lock(path))
-                elif name == "requirements.txt":
-                    add_from(_parse_requirements(path))
-                elif name == "pyproject.toml":
-                    add_from(_parse_pyproject(path))
+                add_from(parsers[name](path))
             except Exception as exc:  # never let one bad file kill resolution
                 log_event(
                     log, logging.WARNING, "manifest parse failed", file=str(path), error=str(exc)
@@ -259,3 +272,86 @@ def _poetry_constraint_to_pv(name: str, constraint: object) -> PackageVersion:
     cleaned = version.lstrip("^~>=< ")
     exact = bool(re.fullmatch(r"[0-9][A-Za-z0-9.+!-]*", version.strip()))
     return _pv(name, cleaned or "*", "pyproject", exact=exact)
+
+
+# ---- Rust ---------------------------------------------------------------
+
+
+def _rv(name: str, version: str, source: str, exact: bool) -> PackageVersion:
+    return PackageVersion(
+        package=name, version=version, ecosystem="rust", source=source, exact=exact
+    )
+
+
+def _parse_cargo_lock(path: Path) -> list[PackageVersion]:
+    data = tomllib.loads(path.read_text("utf-8"))
+    out: list[PackageVersion] = []
+    for pkg in data.get("package", []):
+        name = pkg.get("name")
+        version = pkg.get("version")
+        if name and version:
+            out.append(_rv(name, str(version), "Cargo.lock", exact=True))
+    return out
+
+
+def _parse_cargo_toml(path: Path) -> list[PackageVersion]:
+    data = tomllib.loads(path.read_text("utf-8"))
+    out: list[PackageVersion] = []
+    tables = [
+        data.get("dependencies", {}),
+        data.get("dev-dependencies", {}),
+        data.get("build-dependencies", {}),
+    ]
+    for table in tables:
+        for name, constraint in table.items():
+            if isinstance(constraint, dict):
+                version = str(constraint.get("version", "*"))
+            else:
+                version = str(constraint)
+            cleaned = version.lstrip("^~>=< ")
+            exact = bool(re.fullmatch(r"[0-9][A-Za-z0-9.+-]*", version.strip()))
+            out.append(_rv(name, cleaned or "*", "Cargo.toml", exact=exact))
+    return out
+
+
+# ---- npm ----------------------------------------------------------------
+
+
+def _nv(name: str, version: str, source: str, exact: bool) -> PackageVersion:
+    return PackageVersion(
+        package=name, version=version, ecosystem="npm", source=source, exact=exact
+    )
+
+
+def _parse_package_json(path: Path) -> list[PackageVersion]:
+    data = json.loads(path.read_text("utf-8"))
+    out: list[PackageVersion] = []
+    for field in ("dependencies", "devDependencies", "peerDependencies"):
+        for name, spec in data.get(field, {}).items():
+            spec_str = str(spec)
+            cleaned = spec_str.lstrip("^~>=< v")
+            exact = bool(re.fullmatch(r"[0-9][A-Za-z0-9.+-]*", spec_str.strip()))
+            out.append(_nv(name, cleaned or "*", "package.json", exact=exact))
+    return out
+
+
+def _parse_package_lock(path: Path) -> list[PackageVersion]:
+    data = json.loads(path.read_text("utf-8"))
+    out: list[PackageVersion] = []
+    seen: set[str] = set()
+    # npm lockfile v2/v3: "packages" keyed by node_modules path.
+    for key, meta in data.get("packages", {}).items():
+        if not key.startswith("node_modules/"):
+            continue
+        name = key.rsplit("node_modules/", 1)[-1]
+        version = meta.get("version")
+        if name and version and name not in seen:
+            seen.add(name)
+            out.append(_nv(name, str(version), "package-lock.json", exact=True))
+    # v1 fallback: "dependencies" map.
+    if not out:
+        for name, meta in data.get("dependencies", {}).items():
+            version = meta.get("version") if isinstance(meta, dict) else None
+            if name and version:
+                out.append(_nv(name, str(version), "package-lock.json", exact=True))
+    return out

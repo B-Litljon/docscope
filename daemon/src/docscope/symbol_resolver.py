@@ -59,8 +59,10 @@ class SymbolResolver:
         self._client = client
         self._inv_ttl = config.cache.inventory_ttl_days
 
-    async def resolve(self, ctx: ExtractedContext, versions: VersionMap) -> ResolvedSymbol | None:
-        symbol = ctx.symbol
+    async def resolve(
+        self, extracted: ExtractedContext, versions: VersionMap
+    ) -> ResolvedSymbol | None:
+        symbol = extracted.symbol
         if not symbol or "." not in symbol:
             return None
         package = symbol.split(".", 1)[0]

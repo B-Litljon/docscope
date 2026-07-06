@@ -21,15 +21,6 @@ dependencies = [
     "markdownify>=0.13",
 ]
 
-[project.optional-dependencies]
-rust = [
-    "tree-sitter-rust>=0.23,<0.26",
-]
-js = [
-    "tree-sitter-javascript>=0.23,<0.26",
-    "tree-sitter-typescript>=0.23,<0.26",
-]
-
 [project.scripts]
 docscope = "docscope.cli:main"
 

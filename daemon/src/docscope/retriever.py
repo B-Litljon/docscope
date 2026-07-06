@@ -86,9 +86,18 @@ class Retriever:
             return self._extract_sphinx_object(target)
         if isinstance(target, Tag):
             return self._extract_generic(target, symbol)
-        # Anchor not found: readability-style fallback on the main content.
-        main = soup.find("main") or soup.find("article") or soup.body or soup
-        return self._extract_generic(main if isinstance(main, Tag) else soup, symbol)
+        # Anchor not found: readability-style fallback on the main content. Try
+        # the most content-specific container first (rustdoc uses
+        # #main-content; MDN uses <article>).
+        main: Tag | None = None
+        for selector in ("#main-content", "[role=main]", "main", "article"):
+            found = soup.select_one(selector)
+            if isinstance(found, Tag):
+                main = found
+                break
+        if main is None:
+            main = soup.body if isinstance(soup.body, Tag) else soup
+        return self._extract_generic(main, symbol)
 
     def _extract_sphinx_object(self, dt: Tag) -> DocSection:
         """Extract from a Sphinx ``<dl class="py ..."><dt>sig</dt><dd>body</dd>``."""
@@ -102,9 +111,28 @@ class Retriever:
         return DocSection(signature=signature, body_md=body_md, example_md=example_md)
 
     def _extract_generic(self, node: Tag, symbol: str) -> DocSection:
-        example_md = self._first_code_block(node)
-        body_md = _truncate(_to_md(node))
+        clean = self._strip_chrome(node)
+        example_md = self._first_code_block(clean)
+        body_md = _truncate(_to_md(clean))
         return DocSection(signature=None, body_md=body_md, example_md=example_md)
+
+    def _strip_chrome(self, node: Tag) -> Tag:
+        """Remove navigation/UI chrome so generic extraction keeps only prose.
+
+        Targets the common wrappers on rustdoc / MDN / doc sites (sidebars,
+        nav bars, breadcrumbs, the rustdoc ``.main-heading`` toolbar, scripts)."""
+        clone = BeautifulSoup(str(node), "html.parser")
+        selectors = (
+            "nav, header, footer, script, style, aside, "
+            ".sidebar, .main-heading, .rustdoc-toggle, .mobile-topbar, "
+            ".sidebar-elems, #rustdoc-toc, .breadcrumbs, .toc, .headerlink, "
+            "[role=navigation], [role=complementary], [aria-hidden=true]"
+        )
+        for junk in clone.select(selectors):
+            junk.decompose()
+        root = clone.body if isinstance(clone.body, Tag) else clone
+        # BeautifulSoup wraps fragments; return the single content root.
+        return root if isinstance(root, Tag) else clone
 
     def _clean_signature(self, dt: Tag) -> str:
         clone = BeautifulSoup(str(dt), "html.parser")

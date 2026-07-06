@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import time
+from typing import Protocol
 
 import httpx
 
@@ -23,14 +24,24 @@ from .config import Config
 from .context_extractor import ContextExtractor
 from .intent_classifier import IntentClassifier, IntentResult
 from .logging_setup import get_logger, log_event
+from .mdn_resolver import MdnResolver
 from .models import BufferContext, DocCard, ExtractedContext, LookupError, ResolvedSymbol
 from .registry import DocRegistry
 from .retriever import Retriever
+from .rust_resolver import RustResolver
 from .search import SearchProvider, build_search_provider
 from .symbol_resolver import SymbolResolver
 from .version_resolver import VersionMap, VersionResolver
 
 log = get_logger("pipeline")
+
+
+class LanguageResolver(Protocol):
+    """Common interface for the per-language deterministic resolvers."""
+
+    async def resolve(
+        self, extracted: ExtractedContext, versions: VersionMap
+    ) -> ResolvedSymbol | None: ...
 
 
 class Pipeline:
@@ -41,7 +52,7 @@ class Pipeline:
         self._extractor = ContextExtractor()
         self._version_resolver = VersionResolver(self._cache, config)
         self._registry = DocRegistry(config.registry)
-        self._symbol_resolver: SymbolResolver | None = None
+        self._resolvers: dict[str, LanguageResolver] = {}
         self._retriever: Retriever | None = None
         self._assembler = Assembler()
         self._intent_classifier: IntentClassifier | None = None
@@ -53,9 +64,15 @@ class Pipeline:
             follow_redirects=True,
             headers={"User-Agent": self._config.network.user_agent},
         )
-        self._symbol_resolver = SymbolResolver(
-            self._cache, self._registry, self._config, self._client
-        )
+        python_resolver = SymbolResolver(self._cache, self._registry, self._config, self._client)
+        rust_resolver = RustResolver(self._cache, self._config, self._client)
+        mdn_resolver = MdnResolver(self._config)
+        self._resolvers = {
+            "python": python_resolver,
+            "rust": rust_resolver,
+            "javascript": mdn_resolver,
+            "typescript": mdn_resolver,
+        }
         self._retriever = Retriever(self._cache, self._config, self._client)
         self._intent_classifier = IntentClassifier(self._config, self._client)
         self._search_provider = build_search_provider(self._config, self._client)
@@ -86,18 +103,20 @@ class Pipeline:
         return self._extractor.extract(ctx)
 
     async def lookup(self, ctx: BufferContext) -> DocCard | LookupError:
-        if self._symbol_resolver is None or self._retriever is None:
+        if self._retriever is None:
             raise RuntimeError("Pipeline.lookup called before start()")
         t0 = time.perf_counter()
 
         extracted = self._extractor.extract(ctx)
         versions = await self._version_resolver.resolve(ctx.workspace_root)
 
-        # Tier 1 (deterministic, no LLM): objects.inv fast path.
-        resolved = await self._symbol_resolver.resolve(extracted, versions)
+        # Tier 1 (deterministic, no LLM): the per-language resolver
+        # (objects.inv for Python, docs.rs for Rust, MDN for JS/TS).
+        resolver = self._resolvers.get(extracted.language)
+        resolved = await resolver.resolve(extracted, versions) if resolver else None
 
         # Tier 2 (LLM-last): only when the fast path fails. The model just names
-        # the symbol; resolution stays version-pinned via objects.inv.
+        # the symbol; resolution stays version-pinned via the fast path.
         extra_warnings: list[str] = []
         if resolved is None:
             resolved = await self._llm_fallback(extracted, ctx, versions)
@@ -157,7 +176,7 @@ class Pipeline:
         self, extracted: ExtractedContext, ctx: BufferContext, versions: VersionMap
     ) -> ResolvedSymbol | None:
         classifier = self._intent_classifier
-        resolver = self._symbol_resolver
+        resolver = self._resolvers.get(extracted.language)
         if classifier is None or resolver is None or not classifier.available:
             return None
         intent: IntentResult | None = await classifier.classify(extracted, ctx)
@@ -167,7 +186,7 @@ class Pipeline:
         synthetic = ExtractedContext(language=extracted.language, symbol=intent.symbol)
         resolved = await resolver.resolve(synthetic, versions)
         if resolved is not None:
-            resolved.resolver = "llm+objects.inv"
+            resolved.resolver = f"llm+{resolved.resolver}"
         return resolved
 
     async def _web_fallback(
