@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+
+# docscope runtime
+.docscope/
+*.db
+*.db-wal
+*.db-shm
+
+# Node / VS Code extension
+node_modules/
+clients/vscode/out/
+clients/vscode/*.vsix
+
+# Editors / OS
+.DS_Store
+.idea/

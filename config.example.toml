@@ -1,0 +1,41 @@
+# docscope configuration — copy to ~/.docscope/config.toml
+# Every key is optional; the daemon runs with zero config out of the box.
+
+[daemon]
+host = "127.0.0.1"
+port = 7317
+debounce_ms = 700          # daemon-side idle debounce before pushing a card
+client_debounce_ms = 200   # advisory pre-debounce for clients
+
+[cache]
+dir = "~/.docscope"
+inventory_ttl_days = 7
+doc_page_ttl_days = 30
+
+[network]
+fetch_timeout_s = 4.0
+user_agent = "docscope/0.1 (+https://github.com/docscope)"
+
+# LiteLLM proxy for the slow-path IntentClassifier (M3). Disabled by default so
+# the fast path never blocks on a model. The proxy is called with an
+# OpenAI-compatible /chat/completions request; the API key is read from the
+# named environment variable, never stored here.
+[llm]
+enabled = false
+base_url = ""                        # e.g. "http://localhost:4000"
+api_key_env = "DOCSCOPE_LLM_API_KEY"
+model_tier_fast = "local-fast"       # a model tier name registered in your proxy
+timeout_s = 6.0
+
+# Web-search fallback (T3, M3). provider = "none" | "searxng" | "brave".
+[search]
+provider = "none"
+endpoint = ""                        # SearXNG /search or Brave API endpoint
+api_key_env = "DOCSCOPE_SEARCH_API_KEY"
+timeout_s = 5.0
+
+# Per-package documentation source overrides. inv_url may contain
+# {version} / {major_minor} / {major} / {minor} placeholders.
+# [registry.mylib]
+# inv_url = "https://mylib.example.com/en/{version}/objects.inv"
+# versioned = true
