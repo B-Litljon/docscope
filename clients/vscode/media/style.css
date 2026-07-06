@@ -1,0 +1,132 @@
+:root {
+  --card-radius: 6px;
+}
+
+body {
+  padding: 6px;
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground);
+}
+
+.status {
+  font-size: 11px;
+  padding: 2px 4px;
+  color: var(--vscode-descriptionForeground);
+}
+.status.warn {
+  color: var(--vscode-editorWarning-foreground);
+}
+
+.empty {
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  padding: 12px 6px;
+  line-height: 1.5;
+}
+
+.card {
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: var(--card-radius);
+  margin-bottom: 8px;
+  overflow: hidden;
+  background: var(--vscode-editorWidget-background);
+}
+.card.pinned {
+  border-color: var(--vscode-focusBorder);
+}
+.card.error {
+  border-color: var(--vscode-editorWarning-foreground);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--vscode-sideBarSectionHeader-background);
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+.card-title {
+  font-weight: 600;
+  font-family: var(--vscode-editor-font-family);
+  font-size: 12px;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.card-meta {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.badge {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 8px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  white-space: nowrap;
+}
+.badge.exact {
+  background: var(--vscode-testing-iconPassed, #388a34);
+  color: #fff;
+}
+.tier {
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground);
+}
+.card-actions {
+  display: flex;
+  gap: 2px;
+}
+.icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+.icon-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+.icon-btn.active {
+  filter: none;
+  opacity: 1;
+}
+.icon-btn.pin {
+  opacity: 0.5;
+}
+.icon-btn.pin.active {
+  opacity: 1;
+}
+
+.card-body {
+  padding: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-x: auto;
+}
+.card-body pre {
+  background: var(--vscode-textCodeBlock-background);
+  padding: 8px;
+  border-radius: 4px;
+  overflow-x: auto;
+}
+.card-body code {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 11px;
+}
+.card-body h3 {
+  margin: 0 0 4px 0;
+  font-size: 13px;
+}
+.card-body a {
+  color: var(--vscode-textLink-foreground);
+}
+.card-body blockquote {
+  margin: 4px 0;
+  padding-left: 8px;
+  border-left: 2px solid var(--vscode-panel-border);
+  color: var(--vscode-descriptionForeground);
+}

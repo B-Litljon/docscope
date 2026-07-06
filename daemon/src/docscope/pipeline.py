@@ -22,7 +22,7 @@ from .cache import DocCache
 from .config import Config
 from .context_extractor import ContextExtractor
 from .logging_setup import get_logger, log_event
-from .models import BufferContext, DocCard, LookupError
+from .models import BufferContext, DocCard, ExtractedContext, LookupError
 from .registry import DocRegistry
 from .retriever import Retriever
 from .symbol_resolver import SymbolResolver
@@ -70,6 +70,11 @@ class Pipeline:
 
     async def __aexit__(self, *exc: object) -> None:
         await self.close()
+
+    def extract_context(self, ctx: BufferContext) -> ExtractedContext:
+        """Run only the (cheap, no-I/O) context extraction. Used by the WS layer
+        to gate the debounce on whether the symbol under the cursor changed."""
+        return self._extractor.extract(ctx)
 
     async def lookup(self, ctx: BufferContext) -> DocCard | LookupError:
         if self._symbol_resolver is None or self._retriever is None:

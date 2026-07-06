@@ -67,7 +67,10 @@ def build_app(config: Config, *, client: httpx.AsyncClient | None = None) -> Fas
         result = await pipeline.lookup(ctx)
         return _serialize(result)
 
-    # M2 attaches the WebSocket endpoint + debounce manager here.
+    # WebSocket streaming endpoint + daemon-side debounce (M2).
+    from .ws import register_ws
+
+    register_ws(app)
     return app
 
 

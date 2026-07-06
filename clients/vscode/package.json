@@ -1,0 +1,96 @@
+{
+  "name": "docscope",
+  "displayName": "docscope",
+  "description": "Ambient, version-pinned documentation for the symbol under your cursor.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "publisher": "docscope",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "docscope",
+          "title": "docscope",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "docscope": [
+        {
+          "id": "docscope.cards",
+          "name": "Documentation",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "docscope.forceLookup",
+        "title": "docscope: Look up symbol under cursor"
+      },
+      {
+        "command": "docscope.reconnect",
+        "title": "docscope: Reconnect to daemon"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "docscope.forceLookup",
+        "key": "ctrl+alt+d",
+        "mac": "cmd+alt+d",
+        "when": "editorTextFocus"
+      }
+    ],
+    "configuration": {
+      "title": "docscope",
+      "properties": {
+        "docscope.daemonUrl": {
+          "type": "string",
+          "default": "ws://127.0.0.1:7317/ws",
+          "description": "WebSocket URL of the docscope daemon."
+        },
+        "docscope.contextWindowLines": {
+          "type": "number",
+          "default": 40,
+          "description": "Number of lines above and below the cursor to send as context."
+        },
+        "docscope.clientDebounceMs": {
+          "type": "number",
+          "default": 200,
+          "description": "Client-side debounce before streaming a cursor event."
+        },
+        "docscope.enabledLanguages": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["python", "rust", "javascript", "javascriptreact", "typescript", "typescriptreact"],
+          "description": "Editor language ids docscope reacts to."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "typecheck": "tsc --noEmit",
+    "vscode:prepublish": "npm run typecheck && node esbuild.js --production"
+  },
+  "dependencies": {
+    "markdown-it": "^14.1.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.85.0",
+    "@types/ws": "^8.5.12",
+    "esbuild": "^0.23.0",
+    "typescript": "^5.5.0"
+  }
+}
