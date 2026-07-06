@@ -21,12 +21,14 @@ from .assembler import Assembler
 from .cache import DocCache
 from .config import Config
 from .context_extractor import ContextExtractor
+from .intent_classifier import IntentClassifier, IntentResult
 from .logging_setup import get_logger, log_event
-from .models import BufferContext, DocCard, ExtractedContext, LookupError
+from .models import BufferContext, DocCard, ExtractedContext, LookupError, ResolvedSymbol
 from .registry import DocRegistry
 from .retriever import Retriever
+from .search import SearchProvider, build_search_provider
 from .symbol_resolver import SymbolResolver
-from .version_resolver import VersionResolver
+from .version_resolver import VersionMap, VersionResolver
 
 log = get_logger("pipeline")
 
@@ -42,9 +44,8 @@ class Pipeline:
         self._symbol_resolver: SymbolResolver | None = None
         self._retriever: Retriever | None = None
         self._assembler = Assembler()
-        # Populated in M3.
-        self._intent_classifier = None
-        self._search_provider = None
+        self._intent_classifier: IntentClassifier | None = None
+        self._search_provider: SearchProvider | None = None
 
     async def start(self, client: httpx.AsyncClient | None = None) -> None:
         await self._cache.open()
@@ -56,7 +57,15 @@ class Pipeline:
             self._cache, self._registry, self._config, self._client
         )
         self._retriever = Retriever(self._cache, self._config, self._client)
-        log_event(log, logging.INFO, "pipeline started", port=self._config.daemon.port)
+        self._intent_classifier = IntentClassifier(self._config, self._client)
+        self._search_provider = build_search_provider(self._config, self._client)
+        log_event(
+            log,
+            logging.INFO,
+            "pipeline started",
+            port=self._config.daemon.port,
+            llm=self._intent_classifier.available,
+        )
 
     async def close(self) -> None:
         if self._client is not None:
@@ -84,8 +93,22 @@ class Pipeline:
         extracted = self._extractor.extract(ctx)
         versions = await self._version_resolver.resolve(ctx.workspace_root)
 
+        # Tier 1 (deterministic, no LLM): objects.inv fast path.
         resolved = await self._symbol_resolver.resolve(extracted, versions)
-        # M3 attaches the LLM/T3 fallback here when `resolved is None`.
+
+        # Tier 2 (LLM-last): only when the fast path fails. The model just names
+        # the symbol; resolution stays version-pinned via objects.inv.
+        extra_warnings: list[str] = []
+        if resolved is None:
+            resolved = await self._llm_fallback(extracted, ctx, versions)
+
+        # Tier 3: web search for libraries with no published inventory.
+        if resolved is None:
+            resolved = await self._web_fallback(extracted, versions)
+            if resolved is not None:
+                extra_warnings.append(
+                    "Sourced from a web search, not an official documentation inventory."
+                )
 
         if resolved is None:
             elapsed = (time.perf_counter() - t0) * 1000
@@ -111,7 +134,9 @@ class Pipeline:
         tier = retrieval.tier if retrieval else "none"
 
         elapsed = (time.perf_counter() - t0) * 1000
-        card = self._assembler.assemble(resolved, section, elapsed_ms=elapsed, cache_tier=tier)
+        card = self._assembler.assemble(
+            resolved, section, elapsed_ms=elapsed, cache_tier=tier, extra_warnings=extra_warnings
+        )
         log_event(
             log,
             logging.INFO,
@@ -119,8 +144,56 @@ class Pipeline:
             symbol=resolved.symbol,
             package=resolved.package,
             version=resolved.version,
+            resolver=resolved.resolver,
             tier=tier,
             exact=resolved.exact_version,
             elapsed_ms=round(elapsed, 1),
         )
         return card
+
+    # ---- fallback tiers --------------------------------------------------
+
+    async def _llm_fallback(
+        self, extracted: ExtractedContext, ctx: BufferContext, versions: VersionMap
+    ) -> ResolvedSymbol | None:
+        classifier = self._intent_classifier
+        resolver = self._symbol_resolver
+        if classifier is None or resolver is None or not classifier.available:
+            return None
+        intent: IntentResult | None = await classifier.classify(extracted, ctx)
+        if intent is None or not intent.symbol:
+            return None
+        # Re-resolve the LLM-named symbol through the version-pinned fast path.
+        synthetic = ExtractedContext(language=extracted.language, symbol=intent.symbol)
+        resolved = await resolver.resolve(synthetic, versions)
+        if resolved is not None:
+            resolved.resolver = "llm+objects.inv"
+        return resolved
+
+    async def _web_fallback(
+        self, extracted: ExtractedContext, versions: VersionMap
+    ) -> ResolvedSymbol | None:
+        provider = self._search_provider
+        if provider is None:
+            return None
+        symbol = extracted.symbol or extracted.raw_token
+        if not symbol:
+            return None
+        package = symbol.split(".", 1)[0]
+        pv = versions.lookup(package)
+        version = pv.version if pv else "latest"
+        query = f"{package} {symbol} documentation"
+        results = await provider.search(query, limit=5)
+        if not results:
+            return None
+        top = results[0]
+        return ResolvedSymbol(
+            package=package,
+            version=version,
+            symbol=symbol,
+            url=top.url,
+            anchor=None,
+            role=None,
+            resolver="web-search",
+            exact_version=False,
+        )
