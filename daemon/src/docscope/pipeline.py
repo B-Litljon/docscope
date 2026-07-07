@@ -20,7 +20,7 @@ import httpx
 
 from .assembler import Assembler
 from .cache import DocCache
-from .config import Config
+from .config import Config, RegistryOverride
 from .context_extractor import ContextExtractor
 from .intent_classifier import IntentClassifier, IntentResult
 from .logging_setup import get_logger, log_event
@@ -96,6 +96,13 @@ class Pipeline:
 
     async def __aexit__(self, *exc: object) -> None:
         await self.close()
+
+    def add_registry_override(self, package: str, override: RegistryOverride) -> None:
+        """Add a user-supplied doc source for ``package``, live — no daemon
+        restart needed. Also updates ``self._config.registry`` so callers can
+        persist it (see ``config.save_config``)."""
+        self._config.registry[package] = override
+        self._registry.add_override(package, override)
 
     def extract_context(self, ctx: BufferContext) -> ExtractedContext:
         """Run only the (cheap, no-I/O) context extraction. Used by the WS layer

@@ -83,9 +83,10 @@ class WSSession:
         extracted = self._pipeline.extract_context(ctx)
         if not extracted.symbol or extracted.symbol == self._last_pushed_symbol:
             return
-        await self._run(ctx, force=False)
+        await self._safe_send({"type": "status", "message": "checking…"})
+        await self._run(ctx, force=False, symbol=extracted.symbol)
 
-    async def _run(self, ctx: BufferContext, *, force: bool) -> None:
+    async def _run(self, ctx: BufferContext, *, force: bool, symbol: str | None = None) -> None:
         try:
             result = await self._pipeline.lookup(ctx)
         except Exception as exc:  # a lookup must never kill the connection
@@ -100,8 +101,12 @@ class WSSession:
             self._last_pushed_symbol = result.symbol
             await self._safe_send(_serialize(result))
         elif force:
-            # Ambient (non-forced) misses stay silent to avoid sidebar noise.
             await self._safe_send(_serialize(result))
+        else:
+            # Ambient (non-forced) misses never push a card — only a transient
+            # status message, so the sidebar itself stays free of noise.
+            message = f"no docs for {symbol}" if symbol else "no docs found"
+            await self._safe_send({"type": "status", "message": message})
 
     async def _safe_send(self, payload: dict) -> None:
         with contextlib.suppress(WebSocketDisconnect, RuntimeError):

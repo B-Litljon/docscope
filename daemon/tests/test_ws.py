@@ -41,6 +41,7 @@ def _ctx(ws: str, text: str, line: int, col: int) -> dict:
 
 
 TEXT = "import testpkg\n\ntestpkg.Thing.do_it\ntestpkg.helper\n"
+TEXT_MISS = "import testpkg\n\ntestpkg.NonExistentThing\n"
 
 
 def test_forced_lookup_returns_card(ws_client):
@@ -56,9 +57,20 @@ def test_debounced_context_pushes_card(ws_client):
     client, ws = ws_client
     with client.websocket_connect("/ws") as sock:
         sock.send_json({"type": "context", "context": _ctx(ws, TEXT, 2, 16)})
+        # A transient "checking…" status precedes the card.
+        assert sock.receive_json() == {"type": "status", "message": "checking…"}
         msg = sock.receive_json()
     assert msg["type"] == "card"
     assert msg["card"]["symbol"] == "testpkg.Thing.do_it"
+
+
+def test_ambient_miss_sends_status_not_card(ws_client):
+    client, ws = ws_client
+    with client.websocket_connect("/ws") as sock:
+        sock.send_json({"type": "context", "context": _ctx(ws, TEXT_MISS, 2, 20)})
+        assert sock.receive_json() == {"type": "status", "message": "checking…"}
+        msg = sock.receive_json()
+    assert msg == {"type": "status", "message": "no docs for testpkg.NonExistentThing"}
 
 
 def test_unchanged_symbol_is_gated(ws_client):
@@ -70,12 +82,13 @@ def test_unchanged_symbol_is_gated(ws_client):
 
         # A context event on the SAME symbol must not push another card.
         sock.send_json({"type": "context", "context": _ctx(ws, TEXT, 2, 17)})
-        # A ping round-trips; if a card had been emitted it would arrive first.
+        # A ping round-trips; if anything had been emitted it would arrive first.
         sock.send_json({"type": "ping"})
         assert sock.receive_json() == {"type": "pong"}
 
         # Moving to a DIFFERENT symbol pushes again.
         sock.send_json({"type": "context", "context": _ctx(ws, TEXT, 3, 10)})
+        assert sock.receive_json() == {"type": "status", "message": "checking…"}
         msg = sock.receive_json()
         assert msg["type"] == "card"
         assert msg["card"]["symbol"] == "testpkg.helper"

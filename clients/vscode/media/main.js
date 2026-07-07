@@ -8,6 +8,64 @@
   const emptyEl = document.getElementById("empty");
   const MAX_UNPINNED = 25;
 
+  const langChecks = [...document.querySelectorAll(".lang")];
+  const contextWindowLinesEl = document.getElementById("contextWindowLines");
+  const clientDebounceMsEl = document.getElementById("clientDebounceMs");
+  const daemonUrlEl = document.getElementById("daemonUrl");
+  const pkgNameEl = document.getElementById("pkgName");
+  const pkgInvUrlEl = document.getElementById("pkgInvUrl");
+  const pkgVersionedEl = document.getElementById("pkgVersioned");
+  const pkgAddEl = document.getElementById("pkgAdd");
+
+  function applySettings(settings) {
+    for (const cb of langChecks) {
+      cb.checked = settings.enabledLanguages.includes(cb.dataset.lang);
+    }
+    contextWindowLinesEl.value = String(settings.contextWindowLines);
+    clientDebounceMsEl.value = String(settings.clientDebounceMs);
+    daemonUrlEl.value = settings.daemonUrl;
+  }
+
+  for (const cb of langChecks) {
+    cb.addEventListener("change", () => {
+      const enabled = langChecks.filter((c) => c.checked).map((c) => c.dataset.lang);
+      vscode.postMessage({ type: "updateSetting", key: "enabledLanguages", value: enabled });
+    });
+  }
+  contextWindowLinesEl.addEventListener("change", () => {
+    vscode.postMessage({
+      type: "updateSetting",
+      key: "contextWindowLines",
+      value: Number(contextWindowLinesEl.value),
+    });
+  });
+  clientDebounceMsEl.addEventListener("change", () => {
+    vscode.postMessage({
+      type: "updateSetting",
+      key: "clientDebounceMs",
+      value: Number(clientDebounceMsEl.value),
+    });
+  });
+  daemonUrlEl.addEventListener("change", () => {
+    vscode.postMessage({ type: "updateSetting", key: "daemonUrl", value: daemonUrlEl.value });
+  });
+  pkgAddEl.addEventListener("click", () => {
+    const pkg = pkgNameEl.value.trim();
+    const invUrl = pkgInvUrlEl.value.trim();
+    if (!pkg || !invUrl) {
+      return;
+    }
+    vscode.postMessage({
+      type: "addPackageOverride",
+      package: pkg,
+      invUrl,
+      versioned: pkgVersionedEl.checked,
+    });
+    pkgNameEl.value = "";
+    pkgInvUrlEl.value = "";
+    pkgVersionedEl.checked = false;
+  });
+
   function refreshEmpty() {
     emptyEl.style.display = cardsEl.children.length === 0 ? "block" : "none";
   }
@@ -93,6 +151,8 @@
     } else if (msg.type === "state") {
       statusEl.textContent = msg.state === "connected" ? "" : "⚠ daemon " + msg.state;
       statusEl.className = "status" + (msg.state === "connected" ? "" : " warn");
+    } else if (msg.type === "settings") {
+      applySettings(msg.settings);
     }
   });
 

@@ -12,6 +12,7 @@ import os
 import tomllib
 from pathlib import Path
 
+import tomli_w
 from pydantic import BaseModel, Field
 
 DEFAULT_CONFIG_DIR = Path("~/.docscope").expanduser()
@@ -101,3 +102,14 @@ def load_config(path: str | Path | None = None) -> Config:
     with cfg_path.open("rb") as fh:
         raw = tomllib.load(fh)
     return Config.model_validate(raw)
+
+
+def save_config(config: Config, path: str | Path | None = None) -> None:
+    """Write ``config`` back to ``path`` (or the default), creating parent
+    directories as needed. Keys left at their defaults are still written —
+    this always produces a complete, self-describing file."""
+    cfg_path = Path(path).expanduser() if path else DEFAULT_CONFIG_PATH
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    raw = config.model_dump(mode="json", exclude_none=True)
+    with cfg_path.open("wb") as fh:
+        tomli_w.dump(raw, fh)

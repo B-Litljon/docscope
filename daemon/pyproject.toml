@@ -19,6 +19,7 @@ dependencies = [
     "pydantic>=2.7",
     "beautifulsoup4>=4.12",
     "markdownify>=0.13",
+    "tomli-w>=1.0",
 ]
 
 [project.scripts]

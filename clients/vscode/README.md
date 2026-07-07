@@ -1,6 +1,6 @@
 # docscope — VS Code extension
 
-The thin editor client for [docscope](../../README.md). It streams your cursor
+The thin editor client for docscope. It streams your cursor
 context to the daemon over a WebSocket and renders the doc cards it pushes back
 in a sidebar. It never writes to your buffer and holds no documentation logic —
 context capture + rendering only.
@@ -32,6 +32,20 @@ npm run typecheck      # tsc --noEmit
 ```
 
 Then press **F5** in VS Code (Extension Development Host) to launch it.
+
+## Install as a normal extension
+
+To have docscope active in your everyday VS Code window (rather than an
+Extension Development Host you have to relaunch every session):
+
+```bash
+npm run package                              # -> docscope-<version>.vsix
+code --install-extension docscope-*.vsix --force
+```
+
+Reload the window afterwards. After making changes, re-run both commands to
+pick up the rebuild — `code --install-extension` overwrites the previous
+install.
 
 ## Settings
 

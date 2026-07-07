@@ -11,6 +11,13 @@ export interface CardPayload {
   isError?: boolean;
 }
 
+export interface SidebarSettings {
+  enabledLanguages: string[];
+  contextWindowLines: number;
+  clientDebounceMs: number;
+  daemonUrl: string;
+}
+
 /**
  * Sidebar webview that renders doc cards, newest on top. All markdown is
  * rendered to HTML in the extension host; the webview only lays out cards,
@@ -21,6 +28,10 @@ export class CardsViewProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
   private readonly pending: CardPayload[] = [];
   private state = "disconnected";
+  private settings: SidebarSettings | undefined;
+
+  onUpdateSetting: (key: string, value: string | number | string[]) => void = () => {};
+  onAddPackageOverride: (pkg: string, invUrl: string, versioned: boolean) => void = () => {};
 
   constructor(private readonly extensionUri: vscode.Uri) {}
 
@@ -34,10 +45,21 @@ export class CardsViewProvider implements vscode.WebviewViewProvider {
     view.webview.onDidReceiveMessage((msg) => {
       if (msg?.type === "openSource" && typeof msg.url === "string") {
         void vscode.env.openExternal(vscode.Uri.parse(msg.url));
+      } else if (msg?.type === "updateSetting" && typeof msg.key === "string") {
+        this.onUpdateSetting(msg.key, msg.value);
+      } else if (
+        msg?.type === "addPackageOverride" &&
+        typeof msg.package === "string" &&
+        typeof msg.invUrl === "string"
+      ) {
+        this.onAddPackageOverride(msg.package, msg.invUrl, Boolean(msg.versioned));
       }
     });
     // Flush anything that arrived before the view was ready.
     view.webview.postMessage({ type: "state", state: this.state });
+    if (this.settings) {
+      void view.webview.postMessage({ type: "settings", settings: this.settings });
+    }
     for (const card of this.pending) {
       void view.webview.postMessage({ type: "card", card });
     }
@@ -55,6 +77,11 @@ export class CardsViewProvider implements vscode.WebviewViewProvider {
   setState(state: string): void {
     this.state = state;
     void this.view?.webview.postMessage({ type: "state", state });
+  }
+
+  setSettings(settings: SidebarSettings): void {
+    this.settings = settings;
+    void this.view?.webview.postMessage({ type: "settings", settings });
   }
 
   private html(webview: vscode.Webview): string {
@@ -82,6 +109,39 @@ export class CardsViewProvider implements vscode.WebviewViewProvider {
 </head>
 <body>
   <div id="status" class="status"></div>
+  <details id="settings" class="settings">
+    <summary>Settings</summary>
+    <div class="settings-body">
+      <div class="field">
+        <label>Enabled languages</label>
+        <div class="lang-list">
+          <label><input type="checkbox" class="lang" data-lang="python" /> python</label>
+          <label><input type="checkbox" class="lang" data-lang="rust" /> rust</label>
+          <label><input type="checkbox" class="lang" data-lang="javascript" /> javascript</label>
+          <label><input type="checkbox" class="lang" data-lang="javascriptreact" /> javascriptreact</label>
+          <label><input type="checkbox" class="lang" data-lang="typescript" /> typescript</label>
+          <label><input type="checkbox" class="lang" data-lang="typescriptreact" /> typescriptreact</label>
+        </div>
+      </div>
+      <label class="field">Context window lines
+        <input id="contextWindowLines" type="number" min="1" />
+      </label>
+      <label class="field">Client debounce (ms)
+        <input id="clientDebounceMs" type="number" min="0" />
+      </label>
+      <label class="field">Daemon URL
+        <input id="daemonUrl" type="text" />
+      </label>
+      <hr />
+      <div class="field">
+        <label>Add a doc source for a package with no docs found</label>
+        <input id="pkgName" type="text" placeholder="package name, e.g. httpx" />
+        <input id="pkgInvUrl" type="text" placeholder="objects.inv URL" />
+        <label><input id="pkgVersioned" type="checkbox" /> URL is version-templated ({version})</label>
+        <button id="pkgAdd">Add doc source</button>
+      </div>
+    </div>
+  </details>
   <div id="cards"></div>
   <div id="empty" class="empty">Move your cursor over a library symbol, or press
     <kbd>Ctrl+Alt+D</kbd> to look it up.</div>

@@ -17,6 +17,60 @@ body {
   color: var(--vscode-editorWarning-foreground);
 }
 
+.settings {
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.settings summary {
+  cursor: pointer;
+  color: var(--vscode-descriptionForeground);
+  padding: 2px 4px;
+}
+.settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 4px;
+}
+.settings-body hr {
+  border: none;
+  border-top: 1px solid var(--vscode-panel-border);
+  width: 100%;
+  margin: 2px 0;
+}
+.settings .field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.settings .lang-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+.settings input[type="text"],
+.settings input[type="number"] {
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 3px;
+  padding: 3px 5px;
+  font-size: 12px;
+}
+.settings button {
+  align-self: flex-start;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: none;
+  border-radius: 3px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.settings button:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
 .empty {
   color: var(--vscode-descriptionForeground);
   font-size: 12px;

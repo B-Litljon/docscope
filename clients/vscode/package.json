@@ -8,8 +8,12 @@
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["Other"],
-  "activationEvents": ["onStartupFinished"],
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "viewsContainers": {
@@ -38,6 +42,10 @@
       {
         "command": "docscope.reconnect",
         "title": "docscope: Reconnect to daemon"
+      },
+      {
+        "command": "docscope.restartDaemon",
+        "title": "docscope: Restart daemon"
       }
     ],
     "keybindings": [
@@ -68,9 +76,23 @@
         },
         "docscope.enabledLanguages": {
           "type": "array",
-          "items": { "type": "string" },
-          "default": ["python", "rust", "javascript", "javascriptreact", "typescript", "typescriptreact"],
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "python",
+            "rust",
+            "javascript",
+            "javascriptreact",
+            "typescript",
+            "typescriptreact"
+          ],
           "description": "Editor language ids docscope reacts to."
+        },
+        "docscope.autoStart": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically start the docscope daemon if it isn't already running."
         }
       }
     }
@@ -79,7 +101,8 @@
     "compile": "node esbuild.js",
     "watch": "node esbuild.js --watch",
     "typecheck": "tsc --noEmit",
-    "vscode:prepublish": "npm run typecheck && node esbuild.js --production"
+    "vscode:prepublish": "npm run typecheck && node esbuild.js --production",
+    "package": "vsce package --allow-missing-repository"
   },
   "dependencies": {
     "markdown-it": "^14.1.0",
@@ -90,6 +113,7 @@
     "@types/node": "^20.14.0",
     "@types/vscode": "^1.85.0",
     "@types/ws": "^8.5.12",
+    "@vscode/vsce": "^3.9.2",
     "esbuild": "^0.23.0",
     "typescript": "^5.5.0"
   }

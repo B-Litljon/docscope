@@ -99,6 +99,12 @@ class DocRegistry:
             re.sub(r"[-_.]+", "-", k).lower(): v for k, v in (overrides or {}).items()
         }
 
+    def add_override(self, package: str, override: RegistryOverride) -> None:
+        """Add/replace a user override in place, effective for the next lookup —
+        no restart needed, since resolvers hold a reference to this instance."""
+        canon = re.sub(r"[-_.]+", "-", package).lower()
+        self._overrides[canon] = override
+
     def candidates(self, package: str, version: str) -> list[DocSource]:
         """Ordered candidate inventories for ``package@version``."""
         canon = re.sub(r"[-_.]+", "-", package).lower()

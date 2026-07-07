@@ -115,7 +115,7 @@ async def _run_serve(args: argparse.Namespace) -> int:
     from .server import run_server
 
     config = load_config(args.config)
-    await run_server(config)
+    await run_server(config, config_path=args.config)
     return 0
 
 
